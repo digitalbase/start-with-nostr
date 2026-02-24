@@ -339,6 +339,42 @@ function App() {
 		});
 	}
 
+	const deleteKeysDialog = keys ? (
+		<Dialog>
+			<DialogTrigger asChild>
+				<button
+					type="button"
+					className="text-xs text-muted-foreground/80 hover:text-rose-300"
+				>
+					Start over and delete keys
+				</button>
+			</DialogTrigger>
+			<DialogContent>
+				<DialogHeader>
+					<DialogTitle>Delete your keys and start over?</DialogTitle>
+					<DialogDescription>
+						This removes your `nsec` from local storage. If you did not back it
+						up, you will lose access to this account forever.
+					</DialogDescription>
+				</DialogHeader>
+				<DialogFooter>
+					<DialogClose asChild>
+						<Button variant="secondary">Cancel</Button>
+					</DialogClose>
+					<DialogClose asChild>
+						<Button
+							variant="secondary"
+							className="border-rose-500/40 bg-rose-500/20 text-rose-100 hover:bg-rose-500/30"
+							onClick={resetOnboarding}
+						>
+							Delete keys and restart
+						</Button>
+					</DialogClose>
+				</DialogFooter>
+			</DialogContent>
+		</Dialog>
+	) : null;
+
 	if (!hasHydrated) {
 		return (
 			<main className="onboarding-shell flex min-h-screen items-center justify-center px-6">
@@ -587,6 +623,7 @@ function App() {
 						>
 							Continue to Profile Setup <ArrowRight className="size-5" />
 						</Button>
+						<div className="flex justify-center">{deleteKeysDialog}</div>
 					</div>
 				) : null}
 
@@ -700,6 +737,7 @@ function App() {
 							>
 								Create Profile <ArrowRight className="size-5" />
 							</Button>
+							<div className="flex justify-center">{deleteKeysDialog}</div>
 							<button
 								type="button"
 								onClick={() => setScreen("follow")}
@@ -707,40 +745,6 @@ function App() {
 							>
 								Skip for now
 							</button>
-							<Dialog>
-								<DialogTrigger asChild>
-									<button
-										type="button"
-										className="w-full text-center text-xs text-muted-foreground/80 hover:text-rose-300"
-									>
-										Start over and delete keys
-									</button>
-								</DialogTrigger>
-								<DialogContent>
-									<DialogHeader>
-										<DialogTitle>Delete your keys and start over?</DialogTitle>
-										<DialogDescription>
-											This removes your `nsec` from local storage. If you did
-											not back it up, you will lose access to this account
-											forever.
-										</DialogDescription>
-									</DialogHeader>
-									<DialogFooter>
-										<DialogClose asChild>
-											<Button variant="secondary">Cancel</Button>
-										</DialogClose>
-										<DialogClose asChild>
-											<Button
-												variant="secondary"
-												className="border-rose-500/40 bg-rose-500/20 text-rose-100 hover:bg-rose-500/30"
-												onClick={resetOnboarding}
-											>
-												Delete keys and restart
-											</Button>
-										</DialogClose>
-									</DialogFooter>
-								</DialogContent>
-							</Dialog>
 						</div>
 					</div>
 				) : null}
@@ -817,6 +821,7 @@ function App() {
 						>
 							Continue to Clients ({selectedPubkeys.length} selected)
 						</Button>
+						<div className="flex justify-center">{deleteKeysDialog}</div>
 					</div>
 				) : null}
 
@@ -927,9 +932,17 @@ function App() {
 							</CardContent>
 						</Card>
 
-						<Button size="lg" className="w-full" onClick={resetOnboarding}>
+						<Button
+							size="lg"
+							className="w-full"
+							onClick={() => {
+								setShowPrivateKey(false);
+								setScreen("welcome");
+							}}
+						>
 							Start again
 						</Button>
+						<div className="flex justify-center">{deleteKeysDialog}</div>
 					</div>
 				) : null}
 			</div>
