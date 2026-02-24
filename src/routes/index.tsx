@@ -4,14 +4,16 @@ import {
 	Camera,
 	Check,
 	Copy,
+	ExternalLink,
 	Eye,
 	EyeOff,
 	Shield,
 	Sparkles,
 	Users,
 } from "lucide-react";
-import { nip19 } from "nostr-tools";
-import { useMemo, useState } from "react";
+import { type Event, nip19 } from "nostr-tools";
+import { SimplePool } from "nostr-tools/pool";
+import { useEffect, useMemo, useState } from "react";
 
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -32,14 +34,86 @@ import {
 	createFollowEvent,
 	createKeys,
 	createProfileEvent,
+	keysFromNsec,
 	type NostrKeys,
 } from "../lib/nostr";
 
 export const Route = createFileRoute("/")({ component: App });
 
-type Screen = "welcome" | "keys" | "profile" | "follow" | "done";
+const STORAGE_KEY = "nostr-onboarding-v1";
+const DEFAULT_RELAY_INPUT = "ws://localhost:10547";
+
+type Screen = "welcome" | "keys" | "profile" | "follow" | "client";
+
+type PersistedState = {
+	screen: Screen;
+	nsec: string;
+	savedKeyConfirmed: boolean;
+	displayName: string;
+	about: string;
+	picture: string;
+	selectedPubkeys: string[];
+	publishEnabled: boolean;
+	relayInput: string;
+	profileEventJson: string;
+	followEventJson: string;
+	profilePublishStatus: string;
+	followPublishStatus: string;
+};
+
+const clientOptions = [
+	{
+		name: "Primal",
+		description: "Polished feed, profile discovery, and media support.",
+		url: "https://primal.net/home",
+	},
+	{
+		name: "Snort",
+		description: "Fast web client focused on power users and extensions.",
+		url: "https://snort.social/",
+	},
+	{
+		name: "Iris",
+		description: "Simple web-first Nostr client with clean onboarding.",
+		url: "https://iris.to/",
+	},
+] as const;
+
+function parseRelayUrls(input: string): string[] {
+	return input
+		.split(/[\n,\s]+/)
+		.map((url) => url.trim())
+		.filter((url) => url.length > 0);
+}
+
+async function publishEventToRelays(
+	relays: string[],
+	event: Event,
+): Promise<string> {
+	if (relays.length === 0) {
+		return "Publish skipped: add at least one relay URL.";
+	}
+
+	const pool = new SimplePool();
+	try {
+		const results = await Promise.allSettled(pool.publish(relays, event));
+		const successCount = results.filter(
+			(result) => result.status === "fulfilled",
+		).length;
+		const failureCount = results.length - successCount;
+
+		if (failureCount === 0) {
+			return `Published to ${successCount}/${results.length} relays.`;
+		}
+
+		return `Published to ${successCount}/${results.length} relays (${failureCount} failed).`;
+	} finally {
+		pool.destroy();
+	}
+}
 
 function App() {
+	const [hasHydrated, setHasHydrated] = useState(false);
 	const [screen, setScreen] = useState<Screen>("welcome");
 	const [keys, setKeys] = useState<NostrKeys | null>(null);
 	const [savedKeyConfirmed, setSavedKeyConfirmed] = useState(false);
@@ -51,18 +125,27 @@ function App() {
 	const [profileEventJson, setProfileEventJson] = useState("");
 	const [followEventJson, setFollowEventJson] = useState("");
 
+	const [publishEnabled, setPublishEnabled] = useState(true);
+	const [relayInput, setRelayInput] = useState(DEFAULT_RELAY_INPUT);
+	const [profilePublishStatus, setProfilePublishStatus] = useState("");
+	const [followPublishStatus, setFollowPublishStatus] = useState("");
+
 	const [selectedPubkeys, setSelectedPubkeys] = useState<string[]>(
 		suggestedFollows.slice(0, 3).map((person) => person.pubkey),
 	);
 
 	const progressPercent =
 		screen === "keys"
-			? 34
+			? 25
 			: screen === "profile"
-				? 67
+				? 50
 				: screen === "follow"
-					? 100
-					: 0;
+					? 75
+					: screen === "client"
+						? 100
+						: 0;
+
+	const relayUrls = useMemo(() => parseRelayUrls(relayInput), [relayInput]);
 
 	const followCards = useMemo(() => {
 		return suggestedFollows.map((person) => ({
@@ -71,14 +154,110 @@ function App() {
 		}));
 	}, []);
 
+	useEffect(() => {
+		const storedValue = localStorage.getItem(STORAGE_KEY);
+		if (!storedValue) {
+			setHasHydrated(true);
+			return;
+		}
+
+		try {
+			const parsed = JSON.parse(storedValue) as PersistedState;
+			if (parsed.nsec) {
+				const restoredKeys = keysFromNsec(parsed.nsec);
+				if (restoredKeys) {
+					setKeys(restoredKeys);
+				}
+			}
+
+			setScreen(parsed.screen);
+			setSavedKeyConfirmed(parsed.savedKeyConfirmed);
+			setDisplayName(parsed.displayName);
+			setAbout(parsed.about);
+			setPicture(parsed.picture);
+			setSelectedPubkeys(parsed.selectedPubkeys);
+			setPublishEnabled(parsed.publishEnabled);
+			setRelayInput(parsed.relayInput);
+			setProfileEventJson(parsed.profileEventJson);
+			setFollowEventJson(parsed.followEventJson);
+			setProfilePublishStatus(parsed.profilePublishStatus);
+			setFollowPublishStatus(parsed.followPublishStatus);
+		} catch {
+			localStorage.removeItem(STORAGE_KEY);
+		} finally {
+			setHasHydrated(true);
+		}
+	}, []);
+
+	useEffect(() => {
+		if (!hasHydrated) {
+			return;
+		}
+
+		const value: PersistedState = {
+			screen,
+			nsec: keys?.nsec ?? "",
+			savedKeyConfirmed,
+			displayName,
+			about,
+			picture,
+			selectedPubkeys,
+			publishEnabled,
+			relayInput,
+			profileEventJson,
+			followEventJson,
+			profilePublishStatus,
+			followPublishStatus,
+		};
+
+		localStorage.setItem(STORAGE_KEY, JSON.stringify(value));
+	}, [
+		hasHydrated,
+		screen,
+		keys,
+		savedKeyConfirmed,
+		displayName,
+		about,
+		picture,
+		selectedPubkeys,
+		publishEnabled,
+		relayInput,
+		profileEventJson,
+		followEventJson,
+		profilePublishStatus,
+		followPublishStatus,
+	]);
+
+	function resetOnboarding() {
+		setScreen("welcome");
+		setKeys(null);
+		setSavedKeyConfirmed(false);
+		setShowPrivateKey(false);
+		setDisplayName("");
+		setAbout("");
+		setPicture("");
+		setProfileEventJson("");
+		setFollowEventJson("");
+		setProfilePublishStatus("");
+		setFollowPublishStatus("");
+		setSelectedPubkeys(
+			suggestedFollows.slice(0, 3).map((person) => person.pubkey),
+		);
+		localStorage.removeItem(STORAGE_KEY);
+	}
+
 	function handleCreateAccount() {
 		const generated = createKeys();
 		setKeys(generated);
 		setSavedKeyConfirmed(false);
+		setProfileEventJson("");
+		setFollowEventJson("");
+		setProfilePublishStatus("");
+		setFollowPublishStatus("");
 		setScreen("keys");
 	}
 
-	function handleCreateProfile() {
+	async function handleCreateProfile() {
 		if (!keys || !displayName.trim()) {
 			return;
 		}
@@ -93,10 +272,18 @@ function App() {
 		});
 
 		setProfileEventJson(JSON.stringify(profileEvent, null, 2));
+
+		if (publishEnabled) {
+			const status = await publishEventToRelays(relayUrls, profileEvent);
+			setProfilePublishStatus(status);
+		} else {
+			setProfilePublishStatus("Signed locally only (publishing disabled).");
+		}
+
 		setScreen("follow");
 	}
 
-	function handleFinishFollows() {
+	async function handleFinishFollows() {
 		if (!keys) {
 			return;
 		}
@@ -107,7 +294,15 @@ function App() {
 		});
 
 		setFollowEventJson(JSON.stringify(followEvent, null, 2));
-		setScreen("done");
+
+		if (publishEnabled) {
+			const status = await publishEventToRelays(relayUrls, followEvent);
+			setFollowPublishStatus(status);
+		} else {
+			setFollowPublishStatus("Signed locally only (publishing disabled).");
+		}
+
+		setScreen("client");
 	}
 
 	function toggleFollow(pubkey: string) {
@@ -118,6 +313,16 @@ function App() {
 
 			return [...current, pubkey];
 		});
+	}
+
+	if (!hasHydrated) {
+		return (
+			<main className="onboarding-shell flex min-h-screen items-center justify-center px-6">
+				<p className="font-mono text-sm text-fuchsia-200">
+					Loading onboarding state...
+				</p>
+			</main>
+		);
 	}
 
 	if (screen === "welcome") {
@@ -188,10 +393,10 @@ function App() {
 			<div className="mx-auto w-full max-w-3xl pb-20">
 				<div className="mb-14">
 					<p className="font-mono text-sm text-fuchsia-300">
-						{screen === "keys" && "Step 1 of 3 - Save your keys"}
-						{screen === "profile" && "Step 2 of 3 - Set up your profile"}
-						{screen === "follow" && "Step 3 of 3 - Follow people"}
-						{screen === "done" && "All set - Account ready"}
+						{screen === "keys" && "Step 1 of 4 - Save your keys"}
+						{screen === "profile" && "Step 2 of 4 - Set up your profile"}
+						{screen === "follow" && "Step 3 of 4 - Follow people"}
+						{screen === "client" && "Step 4 of 4 - Pick your client"}
 					</p>
 					<Progress className="mt-3" value={progressPercent} />
 				</div>
@@ -206,8 +411,7 @@ function App() {
 								Your Keys Are Ready
 							</h2>
 							<p className="mt-4 text-xl text-muted-foreground">
-								Save them somewhere safe. If you lose them, you lose access
-								forever.
+								Saved in localStorage so you can resume on this browser.
 							</p>
 						</div>
 
@@ -323,6 +527,42 @@ function App() {
 						</div>
 
 						<Card>
+							<CardHeader>
+								<CardTitle className="text-lg">Relay Publishing</CardTitle>
+								<CardDescription>
+									Configurable publishing for local relay testing.
+								</CardDescription>
+							</CardHeader>
+							<CardContent className="space-y-4">
+								<div className="flex items-center gap-3">
+									<Checkbox
+										checked={publishEnabled}
+										onChange={(event) =>
+											setPublishEnabled(event.currentTarget.checked)
+										}
+									/>
+									<p className="text-sm font-medium">
+										Publish signed events to relays
+									</p>
+								</div>
+								<div>
+									<Label>Relay URLs (comma/newline separated)</Label>
+									<Textarea
+										value={relayInput}
+										onChange={(event) =>
+											setRelayInput(event.currentTarget.value)
+										}
+										className="mt-2 min-h-20 font-mono text-xs"
+										placeholder="ws://localhost:10547"
+									/>
+									<p className="mt-2 text-xs text-muted-foreground">
+										Active relays: {relayUrls.length}
+									</p>
+								</div>
+							</CardContent>
+						</Card>
+
+						<Card>
 							<CardContent className="space-y-5 pt-6">
 								<div className="flex justify-center">
 									<div className="flex size-40 flex-col items-center justify-center rounded-full border border-white/10 bg-black/35 text-muted-foreground">
@@ -365,11 +605,19 @@ function App() {
 							</CardContent>
 						</Card>
 
+						{profilePublishStatus ? (
+							<p className="rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-muted-foreground">
+								{profilePublishStatus}
+							</p>
+						) : null}
+
 						<div className="space-y-3">
 							<Button
 								size="lg"
 								className="w-full"
-								onClick={handleCreateProfile}
+								onClick={() => {
+									void handleCreateProfile();
+								}}
 								disabled={!displayName.trim()}
 							>
 								Create Profile <ArrowRight className="size-5" />
@@ -398,6 +646,12 @@ function App() {
 								Pick a few profiles to make your feed useful from day one.
 							</p>
 						</div>
+
+						{profilePublishStatus ? (
+							<p className="rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-muted-foreground">
+								Profile event: {profilePublishStatus}
+							</p>
+						) : null}
 
 						<div className="grid gap-4">
 							{followCards.map((person) => {
@@ -436,29 +690,108 @@ function App() {
 							})}
 						</div>
 
-						<Button size="lg" className="w-full" onClick={handleFinishFollows}>
-							Finish setup ({selectedPubkeys.length} selected)
+						{followPublishStatus ? (
+							<p className="rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-muted-foreground">
+								Follow event: {followPublishStatus}
+							</p>
+						) : null}
+
+						<Button
+							size="lg"
+							className="w-full"
+							onClick={() => {
+								void handleFinishFollows();
+							}}
+						>
+							Continue to Clients ({selectedPubkeys.length} selected)
 						</Button>
 					</div>
 				) : null}
 
-				{screen === "done" && keys ? (
+				{screen === "client" ? (
 					<div className="space-y-6">
+						<div className="text-center">
+							<div className="mx-auto mb-5 flex size-24 items-center justify-center rounded-3xl bg-fuchsia-500/20">
+								<Sparkles className="size-12 text-fuchsia-300" />
+							</div>
+							<h2 className="text-5xl font-bold tracking-tight">
+								Pick a Client
+							</h2>
+							<p className="mt-4 text-xl text-muted-foreground">
+								Your account is ready. Open a client and login with your `nsec`.
+							</p>
+						</div>
+
+						{keys ? (
+							<Card>
+								<CardHeader>
+									<CardTitle className="text-lg">
+										Your account details
+									</CardTitle>
+									<CardDescription>
+										Use `nsec` to login. Keep it private.
+									</CardDescription>
+								</CardHeader>
+								<CardContent className="space-y-4">
+									<div>
+										<p className="text-xs text-muted-foreground">npub</p>
+										<p className="font-mono text-xs text-fuchsia-200">
+											{keys.npub}
+										</p>
+									</div>
+									<div>
+										<p className="text-xs text-muted-foreground">nsec</p>
+										<p className="font-mono text-xs">
+											{showPrivateKey ? keys.nsec : "*".repeat(44)}
+										</p>
+									</div>
+									<div className="flex gap-3">
+										<Button
+											variant="secondary"
+											onClick={() => setShowPrivateKey((current) => !current)}
+										>
+											{showPrivateKey ? "Hide nsec" : "Show nsec"}
+										</Button>
+										<Button
+											variant="secondary"
+											onClick={() => navigator.clipboard.writeText(keys.nsec)}
+										>
+											<Copy className="size-4" /> Copy nsec
+										</Button>
+									</div>
+								</CardContent>
+							</Card>
+						) : null}
+
+						<div className="grid gap-4 md:grid-cols-3">
+							{clientOptions.map((client) => (
+								<Card key={client.name} className="h-full">
+									<CardHeader>
+										<CardTitle>{client.name}</CardTitle>
+										<CardDescription>{client.description}</CardDescription>
+									</CardHeader>
+									<CardContent>
+										<Button
+											className="w-full"
+											onClick={() =>
+												window.open(client.url, "_blank", "noopener,noreferrer")
+											}
+										>
+											Open {client.name} <ExternalLink className="size-4" />
+										</Button>
+									</CardContent>
+								</Card>
+							))}
+						</div>
+
 						<Card>
 							<CardHeader>
-								<CardTitle className="text-3xl">
-									You are ready for Nostr
-								</CardTitle>
+								<CardTitle className="text-lg">Signed events</CardTitle>
 								<CardDescription>
-									You now have keys, a profile event, and a follow list event
-									signed with nostr-tools.
+									These are the exact events generated with nostr-tools.
 								</CardDescription>
 							</CardHeader>
-							<CardContent className="space-y-5">
-								<div>
-									<p className="text-sm text-muted-foreground">Public key</p>
-									<p className="mt-1 font-mono text-xs">{keys.npub}</p>
-								</div>
+							<CardContent className="space-y-4">
 								{profileEventJson ? (
 									<div>
 										<p className="text-sm text-muted-foreground">
@@ -469,22 +802,20 @@ function App() {
 										</pre>
 									</div>
 								) : null}
-								<div>
-									<p className="text-sm text-muted-foreground">
-										Follow list event (kind 3)
-									</p>
-									<pre className="mt-2 max-h-52 overflow-auto rounded-lg bg-black/40 p-4 font-mono text-xs text-fuchsia-100">
-										{followEventJson}
-									</pre>
-								</div>
+								{followEventJson ? (
+									<div>
+										<p className="text-sm text-muted-foreground">
+											Follow event (kind 3)
+										</p>
+										<pre className="mt-2 max-h-52 overflow-auto rounded-lg bg-black/40 p-4 font-mono text-xs text-fuchsia-100">
+											{followEventJson}
+										</pre>
+									</div>
+								) : null}
 							</CardContent>
 						</Card>
 
-						<Button
-							size="lg"
-							className="w-full"
-							onClick={() => setScreen("welcome")}
-						>
+						<Button size="lg" className="w-full" onClick={resetOnboarding}>
 							Start again
 						</Button>
 					</div>

@@ -30,6 +30,22 @@ export function createKeys(): NostrKeys {
 	};
 }
 
+export function keysFromNsec(nsec: string): NostrKeys | null {
+	const secretKey = secretKeyFromNsec(nsec);
+	if (!secretKey) {
+		return null;
+	}
+
+	const publicKeyHex = getPublicKey(secretKey);
+
+	return {
+		secretKey,
+		publicKeyHex,
+		nsec,
+		npub: nip19.npubEncode(publicKeyHex),
+	};
+}
+
 export function createProfileEvent(input: {
 	keys: NostrKeys;
 	profile: ProfileInput;
