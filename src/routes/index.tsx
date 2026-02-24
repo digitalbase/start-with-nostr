@@ -26,8 +26,16 @@ import {
 } from "../components/ui/card";
 import { Checkbox } from "../components/ui/checkbox";
 import { Input } from "../components/ui/input";
+import {
+	InteractiveStepper,
+	InteractiveStepperDescription,
+	InteractiveStepperIndicator,
+	InteractiveStepperItem,
+	InteractiveStepperSeparator,
+	InteractiveStepperTitle,
+	InteractiveStepperTrigger,
+} from "../components/ui/interactive-stepper";
 import { Label } from "../components/ui/label";
-import { Progress } from "../components/ui/progress";
 import { Textarea } from "../components/ui/textarea";
 import { suggestedFollows } from "../lib/follow-list";
 import {
@@ -86,6 +94,21 @@ function parseRelayUrls(input: string): string[] {
 		.filter((url) => url.length > 0);
 }
 
+function screenToStep(screen: Screen): number {
+	if (screen === "keys") return 1;
+	if (screen === "profile") return 2;
+	if (screen === "follow") return 3;
+	if (screen === "client") return 4;
+	return 1;
+}
+
+function stepToScreen(step: number): Screen {
+	if (step === 1) return "keys";
+	if (step === 2) return "profile";
+	if (step === 3) return "follow";
+	return "client";
+}
+
 async function publishEventToRelays(
 	relays: string[],
 	event: Event,
@@ -133,17 +156,6 @@ function App() {
 	const [selectedPubkeys, setSelectedPubkeys] = useState<string[]>(
 		suggestedFollows.slice(0, 3).map((person) => person.pubkey),
 	);
-
-	const progressPercent =
-		screen === "keys"
-			? 25
-			: screen === "profile"
-				? 50
-				: screen === "follow"
-					? 75
-					: screen === "client"
-						? 100
-						: 0;
 
 	const relayUrls = useMemo(() => parseRelayUrls(relayInput), [relayInput]);
 
@@ -392,13 +404,67 @@ function App() {
 		<main className="onboarding-shell min-h-screen px-6 py-8">
 			<div className="mx-auto w-full max-w-3xl pb-20">
 				<div className="mb-14">
-					<p className="font-mono text-sm text-fuchsia-300">
-						{screen === "keys" && "Step 1 of 4 - Save your keys"}
-						{screen === "profile" && "Step 2 of 4 - Set up your profile"}
-						{screen === "follow" && "Step 3 of 4 - Follow people"}
-						{screen === "client" && "Step 4 of 4 - Pick your client"}
-					</p>
-					<Progress className="mt-3" value={progressPercent} />
+					<InteractiveStepper
+						value={screenToStep(screen)}
+						onStepChange={(step) => setScreen(stepToScreen(step))}
+						orientation="horizontal"
+					>
+						<InteractiveStepperItem>
+							<InteractiveStepperTrigger>
+								<div className="flex items-start">
+									<InteractiveStepperIndicator />
+									<div className="ml-3">
+										<InteractiveStepperTitle>Save keys</InteractiveStepperTitle>
+										<InteractiveStepperDescription>
+											Step 1 of 4
+										</InteractiveStepperDescription>
+									</div>
+								</div>
+							</InteractiveStepperTrigger>
+							<InteractiveStepperSeparator />
+						</InteractiveStepperItem>
+						<InteractiveStepperItem>
+							<InteractiveStepperTrigger>
+								<div className="flex items-start">
+									<InteractiveStepperIndicator />
+									<div className="ml-3">
+										<InteractiveStepperTitle>Profile</InteractiveStepperTitle>
+										<InteractiveStepperDescription>
+											Step 2 of 4
+										</InteractiveStepperDescription>
+									</div>
+								</div>
+							</InteractiveStepperTrigger>
+							<InteractiveStepperSeparator />
+						</InteractiveStepperItem>
+						<InteractiveStepperItem>
+							<InteractiveStepperTrigger>
+								<div className="flex items-start">
+									<InteractiveStepperIndicator />
+									<div className="ml-3">
+										<InteractiveStepperTitle>Follow</InteractiveStepperTitle>
+										<InteractiveStepperDescription>
+											Step 3 of 4
+										</InteractiveStepperDescription>
+									</div>
+								</div>
+							</InteractiveStepperTrigger>
+							<InteractiveStepperSeparator />
+						</InteractiveStepperItem>
+						<InteractiveStepperItem>
+							<InteractiveStepperTrigger>
+								<div className="flex items-start">
+									<InteractiveStepperIndicator />
+									<div className="ml-3">
+										<InteractiveStepperTitle>Client</InteractiveStepperTitle>
+										<InteractiveStepperDescription>
+											Step 4 of 4
+										</InteractiveStepperDescription>
+									</div>
+								</div>
+							</InteractiveStepperTrigger>
+						</InteractiveStepperItem>
+					</InteractiveStepper>
 				</div>
 
 				{screen === "keys" && keys ? (
