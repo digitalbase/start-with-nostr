@@ -25,6 +25,16 @@ import {
 	CardTitle,
 } from "../components/ui/card";
 import { Checkbox } from "../components/ui/checkbox";
+import {
+	Dialog,
+	DialogClose,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+	DialogTrigger,
+} from "../components/ui/dialog";
 import { Input } from "../components/ui/input";
 import {
 	InteractiveStepper,
@@ -252,6 +262,8 @@ function App() {
 		setFollowEventJson("");
 		setProfilePublishStatus("");
 		setFollowPublishStatus("");
+		setPublishEnabled(true);
+		setRelayInput(DEFAULT_RELAY_INPUT);
 		setSelectedPubkeys(
 			suggestedFollows.slice(0, 3).map((person) => person.pubkey),
 		);
@@ -695,6 +707,40 @@ function App() {
 							>
 								Skip for now
 							</button>
+							<Dialog>
+								<DialogTrigger asChild>
+									<button
+										type="button"
+										className="w-full text-center text-xs text-muted-foreground/80 hover:text-rose-300"
+									>
+										Start over and delete keys
+									</button>
+								</DialogTrigger>
+								<DialogContent>
+									<DialogHeader>
+										<DialogTitle>Delete your keys and start over?</DialogTitle>
+										<DialogDescription>
+											This removes your `nsec` from local storage. If you did
+											not back it up, you will lose access to this account
+											forever.
+										</DialogDescription>
+									</DialogHeader>
+									<DialogFooter>
+										<DialogClose asChild>
+											<Button variant="secondary">Cancel</Button>
+										</DialogClose>
+										<DialogClose asChild>
+											<Button
+												variant="secondary"
+												className="border-rose-500/40 bg-rose-500/20 text-rose-100 hover:bg-rose-500/30"
+												onClick={resetOnboarding}
+											>
+												Delete keys and restart
+											</Button>
+										</DialogClose>
+									</DialogFooter>
+								</DialogContent>
+							</Dialog>
 						</div>
 					</div>
 				) : null}
